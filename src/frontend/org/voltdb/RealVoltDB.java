@@ -107,6 +107,7 @@ import org.voltdb.compiler.deploymentfile.ConsistencyType;
 import org.voltdb.compiler.deploymentfile.DeploymentType;
 import org.voltdb.compiler.deploymentfile.HeartbeatType;
 import org.voltdb.compiler.deploymentfile.PartitionDetectionType;
+import org.voltdb.compiler.deploymentfile.PartitionKFactorType;
 import org.voltdb.compiler.deploymentfile.PathsType;
 import org.voltdb.compiler.deploymentfile.SystemSettingsType;
 import org.voltdb.dtxn.InitiatorStats;
@@ -1613,7 +1614,19 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
             }
             int hostcount = m_clusterSettings.get().hostcount();
             int kfactor = m_catalogContext.getDeployment().getCluster().getKfactor();
-            ClusterConfig clusterConfig = new ClusterConfig(hostcount, sphMap, kfactor);
+
+            PartitionKFactorType pkfType = m_catalogContext.getDeployment().getKfactors();
+            Map<Integer, Integer> pkfs = new HashMap<>();
+            if ( pkfType != null) {
+                List<PartitionKFactorType.Partition> partitions = pkfType.getPartition();
+                if (partitions != null) {
+                    for(PartitionKFactorType.Partition p : partitions) {
+                        pkfs.put(p.getId(), p.getKfactor());
+                    }
+                }
+            }
+
+            ClusterConfig clusterConfig = new ClusterConfig(hostcount, sphMap, kfactor, pkfs);
             if (!clusterConfig.validate()) {
                 VoltDB.crashLocalVoltDB(clusterConfig.getErrorMsg(), false, null);
             }

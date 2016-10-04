@@ -38,6 +38,7 @@ import org.voltdb.compiler.deploymentfile.ExportType;
 import org.voltdb.compiler.deploymentfile.HttpdType;
 import org.voltdb.compiler.deploymentfile.HttpdType.Jsonapi;
 import org.voltdb.compiler.deploymentfile.PartitionDetectionType;
+import org.voltdb.compiler.deploymentfile.PartitionKFactorType;
 import org.voltdb.compiler.deploymentfile.PartitionDetectionType.Snapshot;
 import org.voltdb.compiler.deploymentfile.PathsType;
 import org.voltdb.compiler.deploymentfile.PathsType.Voltdbroot;
@@ -102,6 +103,9 @@ public class DeploymentBuilder {
 
     private boolean m_ppdEnabled = false;
     private String m_ppdPrefix = "none";
+
+    //mixed kfactors
+    private boolean m_pkfEnabled = false;
 
     private String m_internalSnapshotPath;
     private String m_commandLogPath;
@@ -386,6 +390,11 @@ public class DeploymentBuilder {
         Snapshot ppdsnapshot = factory.createPartitionDetectionTypeSnapshot();
         ppd.setSnapshot(ppdsnapshot);
         ppdsnapshot.setPrefix(m_ppdPrefix);
+
+        // <kfactors/>
+        PartitionKFactorType pkf = factory.createPartitionKFactorType();
+        deployment.setKfactors(pkf);
+        pkf.setEnabled(m_pkfEnabled);
 
         // <admin-mode>
         // can't be disabled, but only write out the non-default config if
