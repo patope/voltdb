@@ -225,8 +225,8 @@ public class ClusterConfig
         int factor = getReplicationFactor();
         if (!m_replicationFactorsByPartitions.isEmpty()) {
             int f = Collections.max(m_replicationFactorsByPartitions.values());
-            if (f < factor) {
-                f = factor;
+            if (f > factor) {
+                factor = f;
             }
         }
         return factor;
