@@ -294,8 +294,10 @@ public class ClusterConfig
                                        m_replicationFactor);
             return false;
         }
+
         if (getTotalSitesCount() % (getMaximalReplicationFactor() + 1) > 0)
         {
+            hostLog.info(String.format("Total site count: %d, kfactor: %d", getTotalSitesCount(), getMaximalReplicationFactor()));
             m_errorMsg = "The cluster has more hosts and sites per hosts than required for the " +
                 "requested k-safety value. The number of total sites must be a " +
                 "whole multiple of the number of copies of the database (k-safety + 1)";
@@ -303,6 +305,7 @@ public class ClusterConfig
         }
 
         if (getTotalSitesCount() != getTotalPartitionCount()) {
+            hostLog.info(String.format("Total site count: %d, total partition count: %d", getTotalSitesCount(), getTotalPartitionCount()));
             m_errorMsg = "The total site count in the cluster does not match the total partition count.";
             return false;
         }
