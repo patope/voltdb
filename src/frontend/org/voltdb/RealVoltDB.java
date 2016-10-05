@@ -1619,10 +1619,8 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
             Map<Integer, Integer> pkfs = new HashMap<>();
             if ( pkfType != null) {
                 List<PartitionKFactorType.Partition> partitions = pkfType.getPartition();
-                if (partitions != null) {
-                    for(PartitionKFactorType.Partition p : partitions) {
-                        pkfs.put(p.getId(), p.getKfactor());
-                    }
+                for(PartitionKFactorType.Partition p : partitions) {
+                    pkfs.put(p.getId(), p.getKfactor());
                 }
             }
 

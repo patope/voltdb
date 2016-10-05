@@ -48,6 +48,11 @@ import com.google_voltpatches.common.collect.Sets;
 
 public class ClusterConfig
 {
+    final static String PARTITION_ID = "partition_id";
+    final static String PARTITIONS = "partitions";
+    final static String KFACTOR = "kfactor";
+    final static String REPLICA = "replicas";
+
     private static final VoltLogger hostLog = new VoltLogger("HOST");
 
     public static List<Integer> partitionsForHost(JSONObject topo, int hostId) throws JSONException
@@ -59,18 +64,18 @@ public class ClusterConfig
     {
         List<Integer> partitions = new ArrayList<Integer>();
 
-        JSONArray parts = topo.getJSONArray("partitions");
+        JSONArray parts = topo.getJSONArray(PARTITIONS);
 
         for (int p = 0; p < parts.length(); p++) {
             // have an object in the partitions array
             JSONObject aPartition = parts.getJSONObject(p);
-            int pid = aPartition.getInt("partition_id");
+            int pid = aPartition.getInt(PARTITION_ID);
             if (onlyMasters) {
                 if (aPartition.getInt("master") == hostId) {
                     partitions.add(pid);
                 }
             } else {
-                JSONArray replicas = aPartition.getJSONArray("replicas");
+                JSONArray replicas = aPartition.getJSONArray(REPLICA);
                 for (int h = 0; h < replicas.length(); h++) {
                     int replica = replicas.getInt(h);
                     if (replica == hostId) {
@@ -114,14 +119,14 @@ public class ClusterConfig
     public static void addPartitions(JSONObject topo, Multimap<Integer, Integer> partToHost)
         throws JSONException
     {
-        JSONArray partitions = topo.getJSONArray("partitions");
+        JSONArray partitions = topo.getJSONArray(PARTITIONS);
         for (Map.Entry<Integer, Collection<Integer>> e : partToHost.asMap().entrySet()) {
             int partition = e.getKey();
             Collection<Integer> hosts = e.getValue();
 
             JSONObject partObj = new JSONObject();
-            partObj.put("partition_id", partition);
-            partObj.put("replicas", hosts);
+            partObj.put(PARTITION_ID, partition);
+            partObj.put(REPLICA, hosts);
 
             partitions.put(partObj);
         }
@@ -132,17 +137,17 @@ public class ClusterConfig
         this(hostCount, sitesPerHostMap, replicationFactor, null);
     }
 
-    public ClusterConfig(int hostCount, Map<Integer, Integer> sitesPerHostMap, int replicationFactor, Map<Integer, Integer> replicationFactorsBypartitions)
+    public ClusterConfig(int hostCount, Map<Integer, Integer> sitesPerHostMap, int replicationFactor, Map<Integer, Integer> kFactorsPartitionMap)
     {
         m_hostCount = hostCount;
         m_sitesPerHostMap = sitesPerHostMap;
         m_replicationFactor = replicationFactor;
-        if (replicationFactorsBypartitions != null) {
-            m_replicationFactorsByPartitions = replicationFactorsBypartitions;
-            setPartitionKFactors();
-        } else {
-            m_replicationFactorsByPartitions = new HashMap<>();
+        m_kFactorPartitionMap = new HashMap<>();
+        if (kFactorsPartitionMap != null) {
+            m_kFactorPartitionMap.putAll(kFactorsPartitionMap);
+            setPartitionKFactorMap();
         }
+
         m_errorMsg = "Config is unvalidated";
     }
 
@@ -160,18 +165,21 @@ public class ClusterConfig
             int sph = entry.getInt("sites_per_host");
             m_sitesPerHostMap.put(hostId, sph);
         }
-        m_replicationFactor = topo.getInt("kfactor");
+        m_replicationFactor = topo.getInt(KFACTOR);
 
         //kfactor by partition
-        m_replicationFactorsByPartitions = new HashMap<>();
-        JSONArray partitionKFactors = topo.getJSONArray("partitions");
+        m_kFactorPartitionMap = new HashMap<>();
+        JSONArray partitionKFactors = topo.getJSONArray(PARTITIONS);
         if (partitionKFactors != null) {
             for (int i = 0; i < partitionKFactors.length(); i++) {
                 JSONObject pkf = partitionKFactors.getJSONObject(i);
-                m_replicationFactorsByPartitions.put(pkf.getInt("partition_id"), pkf.getInt("kfactor"));
+                if (pkf.has(KFACTOR)) {
+                    m_kFactorPartitionMap.put(pkf.getInt(PARTITION_ID), pkf.getInt(KFACTOR));
+                }
             }
+            setPartitionKFactorMap();
         }
-        setPartitionKFactors();
+
         m_errorMsg = "Config is unvalidated";
     }
 
@@ -202,7 +210,7 @@ public class ClusterConfig
      * get kfactor by partition map
      */
     public Map<Integer, Integer> getReplicationFactorsByPartitions() {
-        return m_replicationFactorsByPartitions;
+        return m_kFactorPartitionMap;
     }
 
     /**
@@ -210,7 +218,7 @@ public class ClusterConfig
      * @param partitionId  The partition id
      */
     public int getReplicationFactorByPartition(int partitionId) {
-        Integer factor = m_replicationFactorsByPartitions.get(new Integer(partitionId));
+        Integer factor = m_kFactorPartitionMap.get(new Integer(partitionId));
         if (factor != null) {
             return factor.intValue();
         }
@@ -223,8 +231,8 @@ public class ClusterConfig
      */
     public int getMaximalReplicationFactor() {
         int factor = getReplicationFactor();
-        if (!m_replicationFactorsByPartitions.isEmpty()) {
-            int f = Collections.max(m_replicationFactorsByPartitions.values());
+        if (!m_kFactorPartitionMap.isEmpty()) {
+            int f = Collections.max(m_kFactorPartitionMap.values());
             if (f > factor) {
                 factor = f;
             }
@@ -237,17 +245,13 @@ public class ClusterConfig
         return getTotalSitesCount() / (getMaximalReplicationFactor() + 1);
     }
 
-    private void setPartitionKFactors() {
-        if (m_replicationFactorsByPartitions.isEmpty()) {
+    private void setPartitionKFactorMap() {
+        if (m_kFactorPartitionMap.isEmpty()) {
             return;
         }
         int partitionCount = getPartitionCount();
-        if (m_replicationFactorsByPartitions.size() < partitionCount) {
-            for (int i = 0; i < partitionCount; i++) {
-                if (!m_replicationFactorsByPartitions.containsKey(i)) {
-                    m_replicationFactorsByPartitions.put(i, getReplicationFactor());
-                }
-            }
+        for (int i = 0; i < partitionCount; i++) {
+            m_kFactorPartitionMap.putIfAbsent(i, getReplicationFactor());
         }
     }
 
@@ -256,12 +260,12 @@ public class ClusterConfig
      * @return The total partition count
      */
     public int getTotalPartitionCount() {
-        if (m_replicationFactorsByPartitions.isEmpty()) {
+        if (m_kFactorPartitionMap.isEmpty()) {
             return getTotalSitesCount();
         }
         LongAdder a = new LongAdder();
-        m_replicationFactorsByPartitions.values().parallelStream().forEach(a::add);
-        return a.intValue();
+        m_kFactorPartitionMap.values().parallelStream().forEach(a::add);
+        return (a.intValue() + m_kFactorPartitionMap.size());
     }
 
     public String getErrorMsg()
@@ -619,7 +623,7 @@ public class ClusterConfig
             partToHosts.put(i, hosts);
         }
 
-        if (m_replicationFactorsByPartitions.isEmpty()) {
+        if (m_kFactorPartitionMap.isEmpty()) {
             for (int i = 0; i < getTotalSitesCount(); i++) {
                 // serially assign partitions to execution sites.
                 int partition = (++partitionCounter) % partitionCount;
@@ -638,7 +642,7 @@ public class ClusterConfig
         JSONStringer stringer = new JSONStringer();
         stringer.object();
         stringer.key("hostcount").value(m_hostCount);
-        stringer.key("kfactor").value(getReplicationFactor());
+        stringer.key(KFACTOR).value(getReplicationFactor());
         stringer.key("host_id_to_sph").array();
         for (Map.Entry<Integer, Integer> entry : sitesPerHostMap.entrySet()) {
             stringer.object();
@@ -647,19 +651,21 @@ public class ClusterConfig
             stringer.endObject();
         }
         stringer.endArray();
-        stringer.key("partitions").array();
+        stringer.key(PARTITIONS).array();
         for (int part = 0; part < partitionCount; part++)
         {
             stringer.object();
-            stringer.key("partition_id").value(part);
+            stringer.key(PARTITION_ID).value(part);
             // This two-line magic deterministically spreads the partition leaders
             // evenly across the cluster at startup.
             int kfactor = getReplicationFactorByPartition(part);
             int index = part % (kfactor + 1);
             int master = partToHosts.get(part).get(index);
             stringer.key("master").value(master);
-            stringer.key("kfactor").value(kfactor);
-            stringer.key("replicas").array();
+            if (kfactor != getReplicationFactor()) {
+                stringer.key(KFACTOR).value(kfactor);
+            }
+            stringer.key(REPLICA).array();
             for (int host_pos : partToHosts.get(part)) {
                 stringer.value(host_pos);
             }
@@ -693,7 +699,7 @@ public class ClusterConfig
         }
 
         Map<Integer, Integer> replicationMap = new LinkedHashMap<>();
-        m_replicationFactorsByPartitions.entrySet().stream().sorted(Map.Entry.<Integer, Integer>comparingByValue()
+        m_kFactorPartitionMap.entrySet().stream().sorted(Map.Entry.<Integer, Integer>comparingByValue()
                 .reversed()).forEachOrdered(x -> replicationMap.put(x.getKey(), x.getValue()));
 
         int replicationArray[][] = new int[2][partitionCount];
@@ -813,7 +819,7 @@ public class ClusterConfig
         JSONStringer stringer = new JSONStringer();
         stringer.object();
         stringer.key("hostcount").value(m_hostCount);
-        stringer.key("kfactor").value(getReplicationFactor());
+        stringer.key(KFACTOR).value(getReplicationFactor());
         stringer.key("host_id_to_sph").array();
         for (Map.Entry<Integer, Integer> entry : sitesPerHostMap.entrySet()) {
             stringer.object();
@@ -822,13 +828,13 @@ public class ClusterConfig
             stringer.endObject();
         }
         stringer.endArray();
-        stringer.key("partitions").array();
+        stringer.key(PARTITIONS).array();
         for (int part = 0; part < partitionCount; part++)
         {
             stringer.object();
-            stringer.key("partition_id").value(part);
+            stringer.key(PARTITION_ID).value(part);
             stringer.key("master").value(partitions.get(part).m_master.m_hostId);
-            stringer.key("replicas").array();
+            stringer.key(REPLICA).array();
             for (Node n : partitions.get(part).m_replicas) {
                 stringer.value(n.m_hostId);
             }
@@ -954,6 +960,6 @@ public class ClusterConfig
     private final int m_hostCount;
     private final Map<Integer, Integer> m_sitesPerHostMap;
     private final int m_replicationFactor;
-    private final Map<Integer, Integer> m_replicationFactorsByPartitions;
+    private final Map<Integer, Integer> m_kFactorPartitionMap;
     private String m_errorMsg;
 }
