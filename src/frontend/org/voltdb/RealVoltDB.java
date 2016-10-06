@@ -159,6 +159,7 @@ import com.google_voltpatches.common.base.Supplier;
 import com.google_voltpatches.common.base.Throwables;
 import com.google_voltpatches.common.collect.ImmutableList;
 import com.google_voltpatches.common.collect.ImmutableMap;
+import com.google_voltpatches.common.collect.Maps;
 import com.google_voltpatches.common.net.HostAndPort;
 import com.google_voltpatches.common.util.concurrent.ListenableFuture;
 import com.google_voltpatches.common.util.concurrent.ListeningExecutorService;
@@ -1615,11 +1616,12 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
             int hostcount = m_clusterSettings.get().hostcount();
             int kfactor = m_catalogContext.getDeployment().getCluster().getKfactor();
 
+            //kfactors per partitions in the deployment config
             PartitionKFactorType pkfType = m_catalogContext.getDeployment().getKfactors();
-            Map<Integer, Integer> pkfs = new HashMap<>();
-            if ( pkfType != null) {
-                List<PartitionKFactorType.Partition> partitions = pkfType.getPartition();
-                for(PartitionKFactorType.Partition p : partitions) {
+            Map<Integer, Integer> pkfs = Maps.newHashMap();
+            if (pkfType != null) {
+                hostLog.info("Mixed K safety factor for partition is found");
+                for(PartitionKFactorType.Partition p : pkfType.getPartition()) {
                     pkfs.put(p.getId(), p.getKfactor());
                 }
             }
@@ -3246,10 +3248,18 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
         final long delta = ((m_executionSiteRecoveryFinish - m_recoveryStartTime) / 1000);
         final long megabytes = m_executionSiteRecoveryTransferred / (1024 * 1024);
         final double megabytesPerSecond = megabytes / ((m_executionSiteRecoveryFinish - m_recoveryStartTime) / 1000.0);
+
+        if(hostLog.isDebugEnabled()) {
+            hostLog.debug("tring to activate accepting client connections");
+        }
         if (m_clientInterface != null) {
             m_clientInterface.mayActivateSnapshotDaemon();
+
             try {
                 m_clientInterface.startAcceptingConnections();
+                if(hostLog.isDebugEnabled()) {
+                    hostLog.debug("started accepting client connections");
+                }
             } catch (IOException e) {
                 hostLog.l7dlog(Level.FATAL,
                         LogKeys.host_VoltDB_ErrorStartAcceptingConnections.name(),
@@ -3450,10 +3460,17 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
             m_leaderAppointer.onReplayCompletion();
         }
 
+        if(hostLog.isDebugEnabled()) {
+            hostLog.debug("tring to start accepting client connections");
+        }
+
         if (!m_rejoining && !m_joining) {
             if (m_clientInterface != null) {
                 try {
                     m_clientInterface.startAcceptingConnections();
+                    if(hostLog.isDebugEnabled()) {
+                        hostLog.debug("started accepting client connections");
+                    }
                 } catch (IOException e) {
                     hostLog.l7dlog(Level.FATAL,
                                    LogKeys.host_VoltDB_ErrorStartAcceptingConnections.name(),
