@@ -1468,7 +1468,7 @@ public class TestPlansJoin extends PlannerTestCase {
        compile("SELECT C, C FROM R1 GROUP BY C ORDER BY C;");
    }
 
-    public void testUsingColumns() {
+    private void perJoinOpTestUsingColumns() {
         // Test USING column
         AbstractPlanNode pn = compile("SELECT MAX(R1.A), C FROM R1 FULL JOIN R2 USING (C) WHERE C > 0 GROUP BY C ORDER BY C");
 
